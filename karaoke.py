@@ -89,6 +89,7 @@ class Karaoke:
         # override with supplied constructor args if provided
         self.port = port
         self.ffmpeg_port = ffmpeg_port
+        self.ffmpeg_url_base = f"http://0.0.0.0:{self.ffmpeg_port}"
         self.hide_url = hide_url
         self.hide_raspiwifi_instructions = hide_raspiwifi_instructions
         self.hide_splash_screen = hide_splash_screen
@@ -165,8 +166,10 @@ class Karaoke:
             else:
                 self.url = f"http://{self.ip}:{self.port}" 
         self.url_parsed = urlparse(self.url)
+
+        # handle ffmpeg URL overrides
         if ffmpeg_url is None:
-            self.ffmpeg_url = f"{self.url_parsed.scheme}://{self.url_parsed.hostname}:{self.ffmpeg_port}"
+            self.ffmpeg_url = None
         else:
             self.ffmpeg_url = ffmpeg_url
 
@@ -384,9 +387,14 @@ class Karaoke:
     def play_file(self, file_path, semitones=0):
         logging.info(f"Playing file: {file_path} transposed {semitones} semitones")
         stream_uid = int(time.time())
-        stream_url = f"{self.ffmpeg_url}/{stream_uid}"
-        # pass a 0.0.0.0 IP to ffmpeg which will work for both hostnames and direct IP access
-        ffmpeg_url = f"http://0.0.0.0:{self.ffmpeg_port}/{stream_uid}"
+        
+        # This is the stream URL that will be accessed by the splash screen client, Flask will proxy this to the ffmpeg server if not overridden
+        if (self.ffmpeg_url): 
+            stream_url = f"{self.ffmpeg_url}/{stream_uid}"
+        else:
+            stream_url = f"{self.url}/stream/{stream_uid}"
+        # Used by ffmpeg, pass a 0.0.0.0 IP to ffmpeg which will work for both hostnames and direct IP access
+        ffmpeg_url = f"{self.ffmpeg_url_base}/{stream_uid}"
 
         pitch = 2**(semitones/12) #The pitch value is (2^x/12), where x represents the number of semitones
 
@@ -425,7 +433,7 @@ class Karaoke:
             output = ffmpeg.output(audio, video, ffmpeg_url, 
                                    vcodec="libx264", acodec="aac", preset="ultrafast",
                                    pix_fmt="yuv420p", listen=1, f="mp4", video_bitrate="500k",
-                                   movflags="frag_keyframe+default_base_moof")     
+                                   movflags="frag_keyframe+default_base_moof")   
         else: 
             video = input.video
             output = ffmpeg.output(audio, video, ffmpeg_url, 
